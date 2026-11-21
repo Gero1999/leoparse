@@ -1,0 +1,8 @@
+export(leoparse_script)
+S3method(leoparse_deparse,character)
+S3method(leoparse_deparse,data.frame)
+S3method(leoparse_deparse,default)
+S3method(leoparse_deparse,integer)
+S3method(leoparse_deparse,list)
+S3method(leoparse_deparse,logical)
+S3method(leoparse_deparse,numeric)

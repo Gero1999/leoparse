@@ -1,0 +1,12 @@
+Package: leoparse
+Title: Generate Reproducible Scripts from R Environments
+Version: 0.0.0.9000
+Authors@R:
+    person("Gerardo Jose", "Rodriguez", email = "gerardo.jrac@gmail.com", role = "aut",
+           comment = c(ORCID = "0000-0003-1413-0060"))
+Description: Replaces environment lookups in an R script template with
+    code that reconstructs the referenced objects.
+License: file LICENSE
+Encoding: UTF-8
+URL: https://github.com/Gero1999/leoparse
+BugReports: https://github.com/Gero1999/leoparse/issues
