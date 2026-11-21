@@ -73,105 +73,54 @@ leoparse_script <- function(template_file, env_obj, output_file) {
 #' @return String of R code
 #' @keywords internal
 leoparse_deparse <- function(object, indent = 0, max_line_items = 10, min_rep_count = 3) {
-  # Handle empty objects
-  if (length(object) == 0 && !is.null(object)) {
-    return(paste0(class(object)[1], "()"))
-  }
   UseMethod("leoparse_deparse")
 }
 
 
 #' @noRd
 leoparse_deparse.default <- function(object, indent = 0, max_line_items = 10, min_rep_count = 3) {
-  paste(deparse(object, width.cutoff = 500), collapse = "")
+  paste(deparse(object, width.cutoff = 80L, control = c("all", "digits17")), collapse = "\n")
 }
 
 
 #' @noRd
-leoparse_deparse.data.frame <- function(object, indent = 0, max_line_items = 10, min_rep_count = 3) {
-  pad <- paste(rep("  ", indent), collapse = "")
-  if (nrow(object) == 0) return("data.frame()")
-  col_vals <- lapply(object, function(col) {
-    leoparse_deparse(col, indent + 1, max_line_items = max_line_items)
-  })
-  col_lines <- paste0(pad, "  ", names(object), " = ", unlist(col_vals))
-  if (length(col_lines) > 1) {
-    col_lines[-length(col_lines)] <- paste0(col_lines[-length(col_lines)], ",")
+leoparse_deparse_atomic <- function(object, indent = 0, max_line_items = 10, min_rep_count = 3) {
+  # Deparse attributed vectors as a whole to preserve their names, shape, and class.
+  if (!is.null(attributes(object)) || length(object) == 0L) {
+    return(leoparse_deparse.default(object))
   }
-  paste0("data.frame(\n", paste(col_lines, collapse = "\n"), "\n", pad, ")")
+
+  literals <- vapply(object, leoparse_deparse.default, character(1), USE.NAMES = FALSE)
+  leoparse_vector_deparse(literals, indent, max_line_items, min_rep_count)
 }
 
+leoparse_deparse.character <- leoparse_deparse_atomic
+leoparse_deparse.numeric <- leoparse_deparse_atomic
+leoparse_deparse.integer <- leoparse_deparse_atomic
+leoparse_deparse.logical <- leoparse_deparse_atomic
 
+
+#' Internal helper to format vector literals with repetition and line splitting
 #' @noRd
-leoparse_deparse.list <- function(object, indent = 0, max_line_items = 10, min_rep_count = 3) {
-  pad <- paste(rep("  ", indent), collapse = "")
-  n <- length(object)
-  nms <- names(object)
-  items <- vapply(seq_len(n), FUN.VALUE = "", function(i) {
-    nm <- if (!is.null(nms) && nzchar(nms[i])) nms[i] else paste0("V", i)
-    if (!grepl("^[A-Za-z.][A-Za-z0-9._]*$", nm)) nm <- sprintf('"%s"', nm)
-    val <- object[[i]]
-    val_str <- leoparse_deparse(val, indent + 1, max_line_items = max_line_items)
-    paste0(nm, " = ", val_str)
-  })
-  if (length(items) > 1) {
-    items[-length(items)] <- paste0(items[-length(items)], ",")
+leoparse_vector_deparse <- function(literals, indent = 0, max_line_items = 10, min_rep_count = 3) {
+  if (length(literals) == 1L) {
+    return(literals)
   }
-  item_lines <- paste0(pad, "  ", items)
-  paste0("list(\n", paste(item_lines, collapse = "\n"), "\n", pad, ")")
-}
 
-
-#' @noRd
-leoparse_deparse.character <- function(object, indent = 0, max_line_items = 10, min_rep_count = 3) {
-  object <- sprintf('"%s"', object)
-  leoparse_vector_deparse(object, indent, max_line_items, min_rep_count)
-}
-
-#' @noRd
-leoparse_deparse.numeric <- function(object, indent = 0, max_line_items = 10, min_rep_count = 3) {
-  object <- sprintf("%s", object)
-  leoparse_vector_deparse(object, indent, max_line_items, min_rep_count)
-}
-
-#' @noRd
-leoparse_deparse.integer <- function(object, indent = 0, max_line_items = 10, min_rep_count = 3) {
-  leoparse_deparse.numeric(object, indent = indent, max_line_items = max_line_items, min_rep_count = min_rep_count)
-}
-
-#' @noRd
-leoparse_deparse.logical <- function(object, indent = 0, max_line_items = 10, min_rep_count = 3) {
-  object <- as.character(object)
-  leoparse_vector_deparse(object, indent, max_line_items, min_rep_count)
-}
-
-
-#' Internal helper to deparse atomic vectors with repetition and line splitting
-#' @noRd
-leoparse_vector_deparse <- function(object, indent = 0, max_line_items = 10, min_rep_count = 3) {
-  n <- length(object)
-  if (n == 1) {
-    return(object)
-  } else {
-    rle_obj <- rle(object)
-    out_items <- c()
-    for (i in seq_along(rle_obj$values)) {
-      val <- rle_obj$values[i]
-      len <- rle_obj$lengths[i]
-      if (len >= min_rep_count) {
-        out_items <- c(out_items, paste0("rep(", val, ", ", len, ")"))
-      } else {
-        out_items <- c(out_items, rep(val, len))
-      }
+  runs <- rle(literals)
+  items <- unlist(Map(function(literal, count) {
+    if (count >= min_rep_count) {
+      return(paste0("rep(", literal, ", ", count, ")"))
     }
+    rep(literal, count)
+  }, runs$values, runs$lengths), use.names = FALSE)
+  lines <- split(items, ceiling(seq_along(items) / max_line_items))
+  lines <- vapply(lines, paste, character(1), collapse = ", ")
+  if (length(lines) == 1L) {
+    return(paste0("c(", lines, ")"))
   }
-  pad <- paste(rep("  ", indent), collapse = "")
-  split_lines <- split(out_items, ceiling(seq_along(out_items) / max_line_items))
-  line_strs <- vapply(split_lines, function(x) paste(x, collapse = ", "), "")
-  if (is.list(split_lines) && length(split_lines) > 1) {
-    out <- paste0(pad, "  ", line_strs, collapse = ",\n")
-    paste0("c(\n", out, "\n", pad, ")")
-  } else {
-    paste0("c(", paste0(line_strs, collapse = ",\n"), ")")
-  }
+
+  pad <- strrep("  ", indent)
+  contents <- paste0(pad, "  ", lines, collapse = ",\n")
+  paste0("c(\n", contents, "\n", pad, ")")
 }
